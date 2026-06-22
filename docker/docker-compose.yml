@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  market-data-aggregator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: market-data-aggregator:latest
+    container_name: mda
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - LOG_LEVEL=info
+    ulimits:
+      rtprio: 99           # allow real-time scheduling
+    cpu_shares: 1024
+    mem_limit: 512m
+
+  # Simulated feed endpoints (stub)
+  market-feed-a:
+    image: alpine:3.19
+    command: ["sh", "-c", "nc -lk 9001"]
+    ports: ["9001:9001"]
+
+  market-feed-b:
+    image: alpine:3.19
+    command: ["sh", "-c", "nc -lk 9002"]
+    ports: ["9002:9002"]
+
+  market-feed-c:
+    image: alpine:3.19
+    command: ["sh", "-c", "nc -lk 9003"]
+    ports: ["9003:9003"]

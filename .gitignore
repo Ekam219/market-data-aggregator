@@ -1,0 +1,8 @@
+build/
+.cache/
+*.o *.a *.so
+cmake-build-*/
+.idea/ .vscode/
+*.swp *~
+__pycache__/ *.pyc
+.env

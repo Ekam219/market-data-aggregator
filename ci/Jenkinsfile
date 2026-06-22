@@ -1,0 +1,94 @@
+pipeline {
+    agent {
+        docker {
+            image 'ubuntu:22.04'
+            args '-u root'
+        }
+    }
+
+    environment {
+        BUILD_TYPE = 'Release'
+        REGISTRY   = 'ghcr.io'
+        IMAGE_NAME = "market-data-aggregator"
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                    apt-get update -q
+                    apt-get install -y --no-install-recommends \
+                        build-essential cmake ninja-build git cppcheck
+                '''
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh '''
+                    cmake -B build -G Ninja \
+                          -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+                          -DCMAKE_CXX_FLAGS="-O2"
+                    cmake --build build --parallel $(nproc)
+                '''
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                sh 'cd build && ctest --output-on-failure --timeout 120'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true,
+                          testResults: 'build/Testing/**/*.xml'
+                }
+            }
+        }
+
+        stage('Static Analysis') {
+            steps {
+                sh '''
+                    cppcheck --enable=all \
+                             --suppress=missingIncludeSystem \
+                             --error-exitcode=1 \
+                             --std=c++17 \
+                             -I include \
+                             src/ include/
+                '''
+            }
+        }
+
+        stage('Docker Build') {
+            when { branch 'main' }
+            steps {
+                sh "docker build -f docker/Dockerfile -t ${IMAGE_NAME}:${BUILD_NUMBER} ."
+                sh "docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${IMAGE_NAME}:latest"
+            }
+        }
+
+        stage('Push Image') {
+            when { branch 'main' }
+            steps {
+                withCredentials([string(credentialsId: 'ghcr-token', variable: 'TOKEN')]) {
+                    sh '''
+                        echo $TOKEN | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+                        docker push ${REGISTRY}/${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "✅ Pipeline passed — build #${BUILD_NUMBER}"
+        }
+        failure {
+            echo "❌ Pipeline failed — check logs for build #${BUILD_NUMBER}"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
