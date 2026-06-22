@@ -1,8 +1,8 @@
 # Market Data Aggregation Service
 
-> C++17 · Python · Multithreading · Docker · Google Test · CI/CD
+> C++17 · Multithreading · Docker · Google Test · CI/CD
 
-High-throughput market data ingestion pipeline processing **1M+ ticks/sec** at **sub-10ms p99 latency** using lock-free queues, CRC32 validation, and a multi-threaded producer/consumer architecture.
+High-throughput market data ingestion pipeline processing **1M+ ticks/sec** at **sub-10ms p99 latency** using lock-free queues, CRC32 validation, and a multi-threaded producer/consumer architecture. 100% C++17.
 
 ---
 
@@ -18,7 +18,7 @@ Feed C ──┘         │
            Consumer Thread
            ├── CRC32 Validation
            ├── Sequence Gap Detection
-           ├── Latency Histogram
+           ├── Latency Histogram (p50/p95/p99/max)
            └── TickHandler callback
                    │
                    ▼
@@ -33,9 +33,9 @@ Feed C ──┘         │
 |---|---|
 | **Throughput** | Lock-free SPSC ring buffer — zero mutex contention on hot path |
 | **Latency** | Cache-line aligned `Tick` struct (≤64 bytes); aligned producer/consumer atomics |
-| **Correctness** | CRC32 (IEEE polynomial) over every tick; sequence-number gap detection |
-| **Resilience** | Feed state machine (CONNECTING → ACTIVE → STALE → DROPPED → RECOVERING) |
-| **Observability** | Per-feed latency histograms; p50/p95/p99/max snapshots; throughput TPS |
+| **Correctness** | CRC32 (IEEE polynomial, compile-time LUT) over every tick; sequence-number gap detection |
+| **Resilience** | Feed state machine: `CONNECTING → ACTIVE → STALE → DROPPED → RECOVERING` |
+| **Observability** | Per-feed latency histograms; p50/p95/p99/max snapshots; aggregate TPS |
 
 ---
 
@@ -51,10 +51,11 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-### Run the aggregator
-```bash
-./build/market_data_aggregator
-```
+Produces:
+- `build/market_data_aggregator` — main aggregator service
+- `build/feed_simulator`         — load-test feed generator
+- `build/market_monitor`         — live terminal dashboard
+- `build/mda_tests`              — Google Test suite
 
 ---
 
@@ -64,12 +65,34 @@ cmake --build build --parallel
 cd build && ctest --output-on-failure
 ```
 
-Test coverage includes:
+Test coverage:
 
-- **Lock-free queue** — FIFO ordering, capacity limits, wrap-around, SPSC concurrent throughput (1M items), move semantics
+- **Lock-free queue** — FIFO ordering, capacity limits, wrap-around, SPSC concurrent 1M-item throughput, move semantics
 - **CRC32** — known vector (`0xCBF43926`), single-bit sensitivity, incremental update
 - **Tick validation** — valid accept, CRC corruption, negative/zero prices, bid > ask, zero timestamp, post-mutation invalidation
 - **Feed pipeline** — start/stop lifecycle, metric accumulation, latency sub-10ms, idempotent stop, state transitions, sequence gap tracking
+
+---
+
+## Tools
+
+### Feed Simulator
+Generates binary tick traffic over TCP for load testing the ingestion pipeline.
+
+```bash
+./build/feed_simulator \
+    --host 127.0.0.1 --port 9001 \
+    --rate 500000 --feed-id FA \
+    --duration 30 --error-rate 0.001
+```
+
+### Market Monitor
+Live terminal dashboard showing per-feed throughput, latency percentiles and health state.
+
+```bash
+./build/market_monitor --demo        # simulated data, no aggregator needed
+./build/market_monitor --interval 1  # live mode, connects to in-process aggregator
+```
 
 ---
 
@@ -88,33 +111,14 @@ docker compose -f docker/docker-compose.yml up
 
 ---
 
-## Python Tools
-
-### Live monitor
-```bash
-python python/market_monitor.py --demo          # demo mode
-python python/market_monitor.py --host localhost # live
-```
-
-### Feed simulator (load testing)
-```bash
-python python/feed_simulator.py \
-    --host localhost --port 9001 \
-    --rate 500000 --feed-id FA \
-    --duration 30 --error-rate 0.001
-```
-
----
-
 ## CI/CD
 
 ### GitHub Actions
 Runs on every push/PR to `main`:
-1. **Build** — CMake Release, Ninja
-2. **Google Test** — full test suite with JUnit XML output
-3. **cppcheck** — static analysis
-4. **Python lint** — ruff
-5. **Docker** — build + push to GHCR on `main`
+1. **Build** — CMake Release, Ninja, all targets
+2. **Google Test** — full suite with artifact upload
+3. **cppcheck** — static analysis across `src/`, `include/`, `tools/`
+4. **Docker** — build + push to GHCR on `main`
 
 ### Jenkins
 See [`ci/Jenkinsfile`](ci/Jenkinsfile) for the equivalent declarative pipeline.
@@ -137,13 +141,13 @@ market-data-aggregator/
 │   ├── feed_ingestion_pipeline.cpp
 │   ├── market_data_aggregator.cpp
 │   └── main.cpp
+├── tools/
+│   ├── feed_simulator.cpp          # TCP load-test tick generator
+│   └── market_monitor.cpp          # Live terminal dashboard
 ├── tests/
 │   ├── test_lock_free_queue.cpp
 │   ├── test_tick.cpp
 │   └── test_feed_ingestion_pipeline.cpp
-├── python/
-│   ├── market_monitor.py           # Live stats dashboard
-│   └── feed_simulator.py           # Load-test feed generator
 ├── docker/
 │   ├── Dockerfile                  # Multi-stage builder → slim runtime
 │   └── docker-compose.yml

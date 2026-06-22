@@ -27,7 +27,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_FLAGS="-O2"
 
-      - name: Build
+      - name: Build all targets
         run: cmake --build build --parallel
 
       - name: Run tests
@@ -58,19 +58,7 @@ jobs:
                    --error-exitcode=1 \
                    --std=c++17 \
                    -I include \
-                   src/ include/
-
-  # ── Python linting ──────────────────────────────────────────────────────────
-  python-lint:
-    name: Python lint
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install ruff
-      - run: ruff check python/
+                   src/ include/ tools/
 
   # ── Docker build ────────────────────────────────────────────────────────────
   docker:

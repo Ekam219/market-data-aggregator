@@ -24,6 +24,13 @@ target_link_libraries(mda_core PUBLIC pthread)
 add_executable(market_data_aggregator src/main.cpp)
 target_link_libraries(market_data_aggregator PRIVATE mda_core)
 
+# ── Tools ─────────────────────────────────────────────────────────────────────
+add_executable(feed_simulator tools/feed_simulator.cpp)
+target_link_libraries(feed_simulator PRIVATE mda_core)
+
+add_executable(market_monitor tools/market_monitor.cpp)
+target_link_libraries(market_monitor PRIVATE mda_core)
+
 # ── Google Test ───────────────────────────────────────────────────────────────
 include(FetchContent)
 FetchContent_Declare(
